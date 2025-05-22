@@ -1,37 +1,59 @@
 package ec.edu.utpl.carreras.computacion.s7;
 
 import ec.edu.utpl.carreras.computacion.s7.model.ClimateSummary;
-import ec.edu.utpl.carreras.computacion.s7.tasks.TaskSummarize;
+import ec.edu.utpl.carreras.computacion.s7.model.ClimateRecord;
+import ec.edu.utpl.carreras.computacion.s7.tasks.TaskSummarizeByYear;
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVParser;
 
+import java.io.FileReader;
+import java.nio.file.Paths;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
 import java.util.concurrent.*;
 
 public class App {
-    public static void main(String[] args) throws InterruptedException, ExecutionException {
-        // Pool de hilos (puede ampliarse si se procesan más archivos)
+    public static void main(String[] args) throws Exception {
+        String path = "C:\\Users\\utpl\\Downloads\\weather\\weatherHistory.csv"; // Cambiar por la ruta real
+
+        Map<Integer, List<ClimateRecord>> recordsByYear = new HashMap<>();
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS Z");
+
+        try (CSVParser parser = CSVParser.parse(
+                new FileReader(path),
+                CSVFormat.DEFAULT.builder().setHeader().setSkipHeaderRecord(true).build())) {
+
+            for (var record : parser) {
+                LocalDateTime dateTime = LocalDateTime.parse(record.get("Formatted Date"), formatter);
+                int year = dateTime.getYear();
+
+                ClimateRecord climateRecord = new ClimateRecord(
+                        dateTime,
+                        Double.parseDouble(record.get("Temperature (C)")),
+                        Double.parseDouble(record.get("Humidity")),
+                        Double.parseDouble(record.get("Wind Speed (km/h)")),
+                        Double.parseDouble(record.get("Visibility (km)")),
+                        Double.parseDouble(record.get("Pressure (millibars)"))
+                );
+
+                recordsByYear.computeIfAbsent(year, k -> new ArrayList<>()).add(climateRecord);
+            }
+        }
+
         ExecutorService executor = Executors.newFixedThreadPool(4);
+        List<Future<ClimateSummary>> results = new ArrayList<>();
 
-        // Ejecutar la tarea
-        Future<ClimateSummary> future = executor.submit(
-                new TaskSummarize("C:\\Users\\utpl\\Downloads\\weather\\weatherHistory.csv"));
+        for (var entry : recordsByYear.entrySet()) {
+            int year = entry.getKey();
+            List<ClimateRecord> records = entry.getValue();
+            results.add(executor.submit(new TaskSummarizeByYear(year, records)));
+        }
 
-        // Obtener los resultados cuando estén listos
-        ClimateSummary result = future.get();
-
-        // Mostrar promedios
-        System.out.println("PROMEDIOS:");
-        System.out.printf("Temperatura: %.2f°C, Humedad: %.2f%%, Viento: %.2f km/h, Visibilidad: %.2f km, Presión: %.2f mb\n",
-                result.tempAvg(), result.humAvg(), result.windSpAvg(), result.visibilityAvg(), result.pressureAvg());
-
-        // Mostrar extremos con su fecha/hora
-        System.out.println("\nEXTREMOS:");
-        System.out.println("Día más caluroso: " + result.hottestTime());
-        System.out.println("Día más frío: " + result.coldestTime());
-        System.out.println("Mayor humedad: " + result.highestHumidityTime());
-        System.out.println("Menor humedad: " + result.lowestHumidityTime());
-        System.out.println("Mayor velocidad del viento: " + result.highestWindTime());
-        System.out.println("Menor velocidad del viento: " + result.lowestWindTime());
-        System.out.println("Mayor visibilidad: " + result.highestVisibilityTime());
-        System.out.println("Menor visibilidad: " + result.lowestVisibilityTime());
+        for (Future<ClimateSummary> future : results) {
+            ClimateSummary summary = future.get();
+            System.out.println(summary);
+        }
 
         executor.shutdown();
     }
