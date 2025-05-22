@@ -3,32 +3,36 @@ package ec.edu.utpl.carreras.computacion.s7;
 import ec.edu.utpl.carreras.computacion.s7.model.ClimateSummary;
 import ec.edu.utpl.carreras.computacion.s7.tasks.TaskSummarize;
 
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
+import java.util.concurrent.*;
 
-/**
- * Clase principal que usa hilos para calcular el promedio climático de un archivo.
- */
 public class App {
     public static void main(String[] args) throws InterruptedException, ExecutionException {
-        // Crear un pool de un solo hilo para ejecutar tareas concurrentes
-        ExecutorService executorService = Executors.newSingleThreadExecutor();
+        // Pool de hilos (puede ampliarse si se procesan más archivos)
+        ExecutorService executor = Executors.newFixedThreadPool(4);
 
-        // Crear una tarea que calcula los promedios a partir del archivo CSV
-        var task = new TaskSummarize("C:\\Users\\utpl\\Downloads\\weather\\weatherHistory.csv");
+        // Ejecutar la tarea
+        Future<ClimateSummary> future = executor.submit(
+                new TaskSummarize("C:\\Users\\utpl\\Downloads\\weather\\weatherHistory.csv"));
 
-        // Enviar la tarea al pool y obtener un Future para recuperar el resultado más tarde
-        Future<ClimateSummary> future = executorService.submit(task);
+        // Obtener los resultados cuando estén listos
+        ClimateSummary result = future.get();
 
-        // Obtener el resultado de la tarea cuando esté listo
-        var result = future.get();
+        // Mostrar promedios
+        System.out.println("PROMEDIOS:");
+        System.out.printf("Temperatura: %.2f°C, Humedad: %.2f%%, Viento: %.2f km/h, Visibilidad: %.2f km, Presión: %.2f mb\n",
+                result.tempAvg(), result.humAvg(), result.windSpAvg(), result.visibilityAvg(), result.pressureAvg());
 
-        // Imprimir el resumen climático (promedios de temperatura, humedad, etc.)
-        System.out.println(result);
+        // Mostrar extremos con su fecha/hora
+        System.out.println("\nEXTREMOS:");
+        System.out.println("Día más caluroso: " + result.hottestTime());
+        System.out.println("Día más frío: " + result.coldestTime());
+        System.out.println("Mayor humedad: " + result.highestHumidityTime());
+        System.out.println("Menor humedad: " + result.lowestHumidityTime());
+        System.out.println("Mayor velocidad del viento: " + result.highestWindTime());
+        System.out.println("Menor velocidad del viento: " + result.lowestWindTime());
+        System.out.println("Mayor visibilidad: " + result.highestVisibilityTime());
+        System.out.println("Menor visibilidad: " + result.lowestVisibilityTime());
 
-        // Cerrar el pool de hilos
-        executorService.shutdown();
+        executor.shutdown();
     }
 }

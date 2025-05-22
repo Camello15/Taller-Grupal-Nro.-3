@@ -9,8 +9,6 @@ import java.io.IOException;
 import java.io.Reader;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.Callable;
 
 public class TaskSummarize implements Callable<ClimateSummary> {
@@ -21,39 +19,75 @@ public class TaskSummarize implements Callable<ClimateSummary> {
     }
 
     @Override
-    public ClimateSummary call() throws IOException{
-        var data = getDataAsList(path2Data);
-        var tempAvg = data.stream().mapToDouble(ClimateRecord::temp).average().orElse(0.0);
-        var humidityAvg = data.stream().mapToDouble(ClimateRecord::humidity).average().orElse(0.0);
-        var windSpeedAvg = data.stream().mapToDouble(ClimateRecord::windSpeed).average().orElse(0.0);
-        var visibilityAvg = data.stream().mapToDouble(ClimateRecord::visibility).average().orElse(0.0);
-        var pressureAvg =data.stream().mapToDouble(ClimateRecord::pressure).average().orElse(0.0);
+    public ClimateSummary call() throws IOException {
+        // Variables acumuladoras para promedios
+        double sumTemp = 0, sumHum = 0, sumWind = 0, sumVis = 0, sumPress = 0;
+        int count = 0;
 
-        return new ClimateSummary(tempAvg, humidityAvg, windSpeedAvg, visibilityAvg, pressureAvg);
-    }
+        // Variables para extremos (máximos y mínimos)
+        double maxTemp = Double.NEGATIVE_INFINITY, minTemp = Double.POSITIVE_INFINITY;
+        double maxHum = Double.NEGATIVE_INFINITY, minHum = Double.POSITIVE_INFINITY;
+        double maxWind = Double.NEGATIVE_INFINITY, minWind = Double.POSITIVE_INFINITY;
+        double maxVis = Double.NEGATIVE_INFINITY, minVis = Double.POSITIVE_INFINITY;
 
-    //Read csv using Apache Commons CSV
-    private List<ClimateRecord> getDataAsList(String path2Data) throws IOException {
-        List<ClimateRecord> output = new ArrayList<>();
-        var csvFormat = CSVFormat
-            .RFC4180
-            .builder()
-            .setHeader()
-            .setSkipHeaderRecord(true)
-            .get();
-        try(Reader reader = Files.newBufferedReader(Paths.get(path2Data));
-            CSVParser parser = CSVParser.parse(reader, csvFormat)) {
+        // Variables para guardar la fecha/hora en que ocurrieron los extremos
+        String hottestTime = "", coldestTime = "";
+        String highestHumidityTime = "", lowestHumidityTime = "";
+        String highestWindTime = "", lowestWindTime = "";
+        String highestVisibilityTime = "", lowestVisibilityTime = "";
 
-            for(var csvRecord : parser) {
-                var temp = Double.parseDouble(csvRecord.get("Temperature (C)"));
-                var humidity = Double.parseDouble(csvRecord.get("Humidity"));
-                var windSpeed = Double.parseDouble(csvRecord.get("Wind Speed (km/h)"));
-                var visibility = Double.parseDouble(csvRecord.get("Visibility (km)"));
-                var pressure = Double.parseDouble(csvRecord.get("Pressure (millibars)"));
+        // Lectura del CSV
+        var csvFormat = CSVFormat.DEFAULT.builder()
+                .setHeader()
+                .setSkipHeaderRecord(true)
+                .build();
 
-                output.add(new ClimateRecord(temp, humidity, windSpeed, visibility, pressure));
+        try (Reader reader = Files.newBufferedReader(Paths.get(path2Data));
+             CSVParser parser = CSVParser.parse(reader, csvFormat)) {
+
+            for (var record : parser) {
+                // Leer los datos del CSV
+                String dateTime = record.get("Formatted Date");
+                double temp = Double.parseDouble(record.get("Temperature (C)"));
+                double hum = Double.parseDouble(record.get("Humidity"));
+                double wind = Double.parseDouble(record.get("Wind Speed (km/h)"));
+                double vis = Double.parseDouble(record.get("Visibility (km)"));
+                double press = Double.parseDouble(record.get("Pressure (millibars)"));
+
+                // Acumular para promedios
+                sumTemp += temp;
+                sumHum += hum;
+                sumWind += wind;
+                sumVis += vis;
+                sumPress += press;
+                count++;
+
+                // Evaluar extremos y guardar la fecha/hora
+                if (temp > maxTemp) { maxTemp = temp; hottestTime = dateTime; }
+                if (temp < minTemp) { minTemp = temp; coldestTime = dateTime; }
+
+                if (hum > maxHum) { maxHum = hum; highestHumidityTime = dateTime; }
+                if (hum < minHum) { minHum = hum; lowestHumidityTime = dateTime; }
+
+                if (wind > maxWind) { maxWind = wind; highestWindTime = dateTime; }
+                if (wind < minWind) { minWind = wind; lowestWindTime = dateTime; }
+
+                if (vis > maxVis) { maxVis = vis; highestVisibilityTime = dateTime; }
+                if (vis < minVis) { minVis = vis; lowestVisibilityTime = dateTime; }
             }
         }
-        return output;
+
+        // Retornar todos los resultados en un solo objeto (promedios + extremos)
+        return new ClimateSummary(
+                sumTemp / count,
+                sumHum / count,
+                sumWind / count,
+                sumVis / count,
+                sumPress / count,
+                hottestTime, coldestTime,
+                highestHumidityTime, lowestHumidityTime,
+                highestWindTime, lowestWindTime,
+                highestVisibilityTime, lowestVisibilityTime
+        );
     }
 }
